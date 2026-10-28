@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/rosso/Projects/Parakh/.codex/hooks/protect-files.sh'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/rosso/Projects/Parakh/.codex/hooks/ruff-check.sh'"
+          }
+        ]
+      }
+    ]
+  }
+}
