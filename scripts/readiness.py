@@ -157,7 +157,8 @@ class Runner:
             return
         # No inherited provider/payment/channel secrets or live-mode flags enter test commands.
         # Toolchain locations (Android SDK, JDK) are paths, not secrets; flutter build needs them.
-        env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR",
+        # CI=true lets Karmi's Gradle file debug-sign the compile-check release bundle, as in Karmi CI.
+        env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR", "CI",
                                                  "ANDROID_HOME", "ANDROID_SDK_ROOT", "JAVA_HOME")
                if key in os.environ}
         env.update(DAILY_AGENT_ENVIRONMENT="test", DAILY_AGENT_LIVE_MODELS_ENABLED="false",
