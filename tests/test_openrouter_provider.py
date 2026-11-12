@@ -283,7 +283,7 @@ def test_redirects_not_followed() -> None:
 
 
 def test_registry_builder_validates_against_schema() -> None:
-    schema_path = Path("/home/rosso/Projects/Parakh/benchmarks_student/model_registry.v1.schema.json")
+    schema_path = Path(__file__).resolve().parents[1] / "benchmarks_student" / "model_registry.v1.schema.json"
     assert schema_path.exists(), "Schema file must exist"
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
 

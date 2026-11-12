@@ -58,9 +58,8 @@ def load_openrouter_api_key(env_path: Path | str | None = None) -> str:
         cur = Path.cwd().resolve()
         for directory in [cur, *cur.parents]:
             candidate_paths.append(directory / ".env.openrouter")
-        parakh_root = Path("/home/rosso/Projects/Parakh")
-        if parakh_root.exists():
-            candidate_paths.append(parakh_root / ".env.openrouter")
+        repo_root = Path(__file__).resolve().parents[2]
+        candidate_paths.append(repo_root / ".env.openrouter")
 
     for p in candidate_paths:
         if p.is_file():
@@ -157,6 +156,12 @@ class OpenRouterAdapter:
         if catalog_models is not None:
             self._validate_catalog_price(catalog_models)
 
+    def __repr__(self) -> str:
+        return f"OpenRouterAdapter(model={self.model!r}, base_url={self.base_url!r}, max_requests={self.max_requests!r})"
+
+    def __str__(self) -> str:
+        return f"OpenRouterAdapter(model={self.model!r})"
+
     def _get_api_key(self) -> str:
         if self._api_key is None:
             self._api_key = load_openrouter_api_key()
@@ -169,9 +174,10 @@ class OpenRouterAdapter:
             m_id = m.get("id", "").removeprefix("openrouter/")
             if m_id == normalized_model:
                 found = True
-                pricing = m.get("pricing", {})
-                prompt_price = float(pricing.get("prompt", 0))
-                completion_price = float(pricing.get("completion", 0))
+                # Accept both the raw /models shape and the snapshot written by snapshot_catalog.
+                pricing = m.get("pricing") or {}
+                prompt_price = float(pricing.get("prompt", m.get("prompt_price_usd", 0)))
+                completion_price = float(pricing.get("completion", m.get("completion_price_usd", 0)))
                 if prompt_price != 0.0 or completion_price != 0.0:
                     raise ProviderConfigurationError(
                         f"catalog price for {self.model} is non-zero (prompt: {prompt_price}, completion: {completion_price}); ABORTED"

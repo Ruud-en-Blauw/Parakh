@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 from model_lab.benchmark import load_suite, select_cases  # noqa: E402
 from model_lab.domain.isolation import CandidateInput  # noqa: E402
-from model_lab.providers.base import ProviderRequest, ProviderRuntimeError  # noqa: E402
+from model_lab.providers.base import ProviderRequest  # noqa: E402
 from model_lab.providers.openrouter import OpenRouterAdapter, load_openrouter_api_key  # noqa: E402
 
 STUDENT = ROOT / "benchmarks_student"

@@ -29,7 +29,7 @@ REQUIRED_TOP_LEVEL = frozenset({
     "candidates", "prompt_template_revision", "pricing_snapshot", "execution",
     "budget", "authorization",
 })
-TOP_LEVEL = REQUIRED_TOP_LEVEL
+TOP_LEVEL = REQUIRED_TOP_LEVEL | {"suite_kind"}
 REQUIRED_EXCLUSIONS = frozenset({
     "customer_data", "calibration_holdout", "production_router_changes", "external_actions",
 })
@@ -253,7 +253,7 @@ def load_operator_input(source: str | Path) -> dict[str, Any]:
     return value
 
 
-def validate_operator_input(value: Mapping[str, Any], *, suite_path: str | Path) -> dict[str, Any]:
+def validate_operator_input(value: Mapping[str, Any], *, suite_path: str | Path, suite_kind: str | None = None) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         _fail("operator input root must be a mapping")
     _exact_keys(value, TOP_LEVEL, "operator input")
@@ -265,6 +265,13 @@ def validate_operator_input(value: Mapping[str, Any], *, suite_path: str | Path)
     if value["development_only"] is not True:
         _fail("development_only must be true")
 
+    declared_kind = value.get("suite_kind")
+    if suite_kind is not None and declared_kind is not None and suite_kind != declared_kind:
+        _fail(f"suite_kind mismatch: input declares {declared_kind!r} but caller passed {suite_kind!r}")
+    effective_suite_kind = suite_kind or declared_kind or "core"
+    if effective_suite_kind not in {"core", "student"}:
+        _fail(f"unsupported suite_kind: {effective_suite_kind}")
+
     exclusions = _mapping(value["exclusions"], "exclusions")
     _exact_keys(exclusions, REQUIRED_EXCLUSIONS, "exclusions")
     if any(exclusions.get(key) is not True for key in REQUIRED_EXCLUSIONS):
@@ -272,8 +279,18 @@ def validate_operator_input(value: Mapping[str, Any], *, suite_path: str | Path)
 
     selection = _mapping(value["case_selection"], "case_selection")
     _exact_keys(selection, {"split", "case_ids"}, "case_selection")
-    if selection.get("split") != "train":
-        _fail("live pilot case selection must use the train split only")
+    student_splits: tuple[str, ...] = ()
+    if effective_suite_kind == "student":
+        split_choice = selection.get("split")
+        if split_choice in (None, "student", "train+calibration"):
+            student_splits = ("train", "calibration")
+        elif split_choice in ("train", "calibration"):
+            student_splits = (split_choice,)
+        else:
+            _fail("student pilot case selection must use train, calibration, or student split")
+    else:
+        if selection.get("split") != "train":
+            _fail("live pilot case selection must use the train split only")
     if selection.get("case_ids") not in (None, []):
         ids = selection["case_ids"]
         if not isinstance(ids, list) or any(not isinstance(item, str) for item in ids):
@@ -282,8 +299,9 @@ def validate_operator_input(value: Mapping[str, Any], *, suite_path: str | Path)
             _fail("calibration/holdout cases cannot be selected for the live pilot")
 
     raw_candidates = value["candidates"]
-    if not isinstance(raw_candidates, list) or not 3 <= len(raw_candidates) <= 5:
-        _fail("candidates must contain 3 to 5 candidate models")
+    min_candidates = 2 if effective_suite_kind == "student" else 3
+    if not isinstance(raw_candidates, list) or not min_candidates <= len(raw_candidates) <= 5:
+        _fail(f"candidates must contain {min_candidates} to 5 candidate models")
     candidates = [_candidate(item, index) for index, item in enumerate(raw_candidates)]
     identifiers = [item.identifier for item in candidates]
     if len(identifiers) != len(set(identifiers)):
@@ -367,12 +385,23 @@ def validate_operator_input(value: Mapping[str, Any], *, suite_path: str | Path)
         _fail("authorized maximum spend cannot exceed total_max_spend")
 
     suite = load_suite(suite_path)
-    selected = select_cases(suite, splits=["train"])
-    if selection.get("case_ids"):
-        requested = tuple(selection["case_ids"])
-        selected = select_cases(suite, case_ids=requested)
-    if len(selected) != 36 or any(case.split != "train" for case in selected):
-        _fail("pilot must select exactly the 36 train cases")
+    if effective_suite_kind == "student":
+        if normalized_execution["concurrency"] != 1:
+            _fail("student path requires concurrency=1")
+        if selection.get("case_ids"):
+            requested = tuple(selection["case_ids"])
+            selected = select_cases(suite, case_ids=requested)
+        else:
+            selected = select_cases(suite, splits=list(student_splits))
+        if any(case.split not in student_splits for case in selected):
+            _fail("holdout or unselected-split cases cannot be selected for the live pilot")
+    else:
+        selected = select_cases(suite, splits=["train"])
+        if selection.get("case_ids"):
+            requested = tuple(selection["case_ids"])
+            selected = select_cases(suite, case_ids=requested)
+        if len(selected) != 36 or any(case.split != "train" for case in selected):
+            _fail("pilot must select exactly the 36 train cases")
 
     base_calls = len(selected) * len(candidates) * normalized_execution["repeats"]
     maximum_calls = base_calls * (normalized_execution["retry_limit"] + 1)
@@ -404,6 +433,7 @@ def validate_operator_input(value: Mapping[str, Any], *, suite_path: str | Path)
     return {
         "schema_version": "0.1.0",
         "development_only": True,
+        "suite_kind": effective_suite_kind,
         "exclusions": dict(exclusions),
         "suite_version": suite.suite_version,
         "suite_hash": suite.source_hash,
@@ -420,8 +450,9 @@ def validate_operator_input(value: Mapping[str, Any], *, suite_path: str | Path)
 
 def build_immutable_plan(value: Mapping[str, Any], *, suite_path: str | Path, source_hash: str | None = None,
                          constraint_hash: str | None = None, source_manifest_path: str | None = None,
-                         constraint_map_path: str | None = None, created_at: str | None = None) -> dict[str, Any]:
-    validated = validate_operator_input(value, suite_path=suite_path)
+                         constraint_map_path: str | None = None, created_at: str | None = None,
+                         suite_kind: str | None = None) -> dict[str, Any]:
+    validated = validate_operator_input(value, suite_path=suite_path, suite_kind=suite_kind)
     plan = dict(validated)
     plan["plan_version"] = "0.1.0"
     plan["frozen_at"] = created_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat()

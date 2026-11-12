@@ -392,7 +392,7 @@ class Snapshot:
 
     @property
     def failed_runs(self) -> int:
-        return sum(r.status in {"failed", "partial", "cancelled"} for r in self.runs)
+        return sum(r.status in {"failed", "partial", "cancelled", "incomplete"} for r in self.runs)
 
     @property
     def review_pending(self) -> int:

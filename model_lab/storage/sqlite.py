@@ -122,7 +122,7 @@ class SQLiteStore:
 
     @synchronized
     def update_run_status(self, run_id: str, status: str) -> None:
-        if status not in {"created", "running", "completed", "partial", "failed", "cancelled"}:
+        if status not in {"created", "running", "completed", "partial", "failed", "cancelled", "incomplete"}:
             raise ValidationError("invalid run status")
         if self.connection.execute("SELECT 1 FROM runs WHERE run_id = ?", (run_id,)).fetchone() is None:
             raise NotFoundError(f"unknown run: {run_id}")

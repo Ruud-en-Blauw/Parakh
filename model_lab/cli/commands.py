@@ -125,10 +125,14 @@ def build_parser() -> argparse.ArgumentParser:
     pilot_validate = pilot_sub.add_parser("validate-input", help="validate operator input without dispatch")
     pilot_validate.add_argument("--input", required=True, dest="operator_input")
     pilot_validate.add_argument("--suite", default="benchmarks/seed_cases.jsonl")
+    pilot_validate.add_argument("--suite-kind", choices=("core", "student"), default=None,
+                                help="core (default: 36 train cases) or student (train/calibration, never holdout); must match the input's suite_kind if set")
     pilot_plan = pilot_sub.add_parser("plan")
     pilot_plan.add_argument("--suite", default="benchmarks/seed_cases.jsonl")
     pilot_plan.add_argument("--out", required=True)
     pilot_plan.add_argument("--operator-input", help="complete operator YAML; converts to an immutable plan")
+    pilot_plan.add_argument("--suite-kind", choices=("core", "student"), default=None,
+                            help="with --operator-input only: core (default) or student; use --suite benchmarks_student/cases.jsonl for student")
     pilot_plan.add_argument("--constraint-map", default="docs/live_pilots/router-constraint-map-v0.2.0.json")
     pilot_plan.add_argument("--source-manifest", default="docs/product_sources/SOURCE_MANIFEST.json")
     pilot_plan.add_argument("--candidate", action="append", default=[], help="provider:model[:revision], repeatable")
@@ -152,6 +156,9 @@ def build_parser() -> argparse.ArgumentParser:
     pilot_run.add_argument("--out", default="lab-data/live-pilots")
     pilot_run.add_argument("--source-manifest", default="docs/product_sources/SOURCE_MANIFEST.json")
     pilot_run.add_argument("--constraint-map", default="docs/live_pilots/router-constraint-map-v0.2.0.json")
+    pilot_run.add_argument("--max-requests-per-day", type=int, default=None,
+                           help="refuse to start if pending requests exceed this; a run reaching it stops cleanly as incomplete")
+    pilot_run.add_argument("--catalog", help="OpenRouter catalog JSON snapshot; openrouter candidates are zero-price checked before any dispatch")
 
     review = sub.add_parser("review", help="export or import blind human review records")
     review_sub = review.add_subparsers(dest="review_command", required=True)
@@ -300,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "pilot":
             if args.pilot_command == "validate-input":
                 value = load_operator_input(args.operator_input)
-                normalized = validate_operator_input(value, suite_path=args.suite)
+                normalized = validate_operator_input(value, suite_path=args.suite, suite_kind=args.suite_kind)
                 _print_json({"valid": True, "suite_version": normalized["suite_version"], "case_count": len(normalized["case_ids"]), "candidate_count": len(normalized["candidates"]), "bounds": normalized["bounds"], "dispatch_performed": False})
                 return 0
             if args.pilot_command == "plan":
@@ -311,10 +318,13 @@ def main(argv: list[str] | None = None) -> int:
                     plan = build_immutable_plan(
                         value, suite_path=args.suite, source_hash=source_hash, constraint_hash=constraint_hash,
                         source_manifest_path=args.source_manifest, constraint_map_path=args.constraint_map,
+                        suite_kind=args.suite_kind,
                     )
                     write_immutable_plan(plan, args.out)
                     _print_json(plan)
                     return 0
+                if args.suite_kind not in (None, "core"):
+                    raise ValidationError("--suite-kind student requires --operator-input")
                 pricing_snapshot = None
                 if args.pricing_snapshot:
                     pricing_path = Path(args.pricing_snapshot)
@@ -351,9 +361,14 @@ def main(argv: list[str] | None = None) -> int:
                 plan, allow_paid=args.allow_paid, source_manifest_path=args.source_manifest,
                 constraint_map_path=args.constraint_map,
             )
+            catalog_models = None
+            if args.catalog:
+                catalog_value = json.loads(Path(args.catalog).read_text(encoding="utf-8"))
+                catalog_models = catalog_value.get("data", catalog_value) if isinstance(catalog_value, dict) else catalog_value
             _print_json(run_authorized_immutable_pilot(
                 plan, suite_path=args.suite, output_dir=args.out,
                 source_manifest_path=args.source_manifest, constraint_map_path=args.constraint_map,
+                max_requests_per_day=args.max_requests_per_day, catalog_models=catalog_models,
             ))
             return 0
         if args.command == "review":

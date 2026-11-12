@@ -369,7 +369,7 @@ class Run:
             raise ValidationError("run prompt hashes must cover the exact case set")
         if any(not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value) for value in self.prompt_hashes.values()):
             raise ValidationError("run prompt hashes must be SHA-256 digests")
-        if self.status not in {"created", "running", "completed", "partial", "failed", "cancelled"}:
+        if self.status not in {"created", "running", "completed", "partial", "failed", "cancelled", "incomplete"}:
             raise ValidationError(f"invalid run status: {self.status}")
         _freeze_fields(self, "case_ids", "environment", "prompt_hashes")
 
