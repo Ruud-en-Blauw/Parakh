@@ -16,7 +16,8 @@ on:
 
 env:
   # Reviewed Karmi exchange commit; bump deliberately after review.
-  KARMI_REF: 84e49ad3a215f1e4f5e3d681b76be54c59b3e580
+  # Karmi main after Ruud-en-Blauw/Karmi#57 (certifi/mako advisory bumps).
+  KARMI_REF: 0346a8cb5eea770639daa70f5cb8fbfc4373856f
   PYRIGHT_VERSION: 1.1.414
   DAILY_AGENT_LIVE_MODELS_ENABLED: "false"
   DAILY_AGENT_PAID_CHECKOUT_ENABLED: "false"
@@ -92,7 +93,7 @@ jobs:
 
       - name: Isolated runtimes (same layout as a developer checkout)
         run: |
-          python -m venv .venv && .venv/bin/pip install -q -e '.[dev]'
+          python -m venv .venv && .venv/bin/python -m pip install -q --upgrade 'pip>=26.2' && .venv/bin/pip install -q -e '.[dev]'
           python -m venv karmi/.venv && karmi/.venv/bin/pip install -q -c karmi/requirements.lock -e './karmi[dev]'
           npm install -g "pyright@${PYRIGHT_VERSION}"
 
@@ -140,7 +141,7 @@ jobs:
 
       - name: Isolated runtimes
         run: |
-          python -m venv .venv && .venv/bin/pip install -q -e '.[dev]'
+          python -m venv .venv && .venv/bin/python -m pip install -q --upgrade 'pip>=26.2' && .venv/bin/pip install -q -e '.[dev]'
           python -m venv karmi/.venv && karmi/.venv/bin/pip install -q -c karmi/requirements.lock -e './karmi[dev]'
           npm install -g "pyright@${PYRIGHT_VERSION}"
           (cd karmi/mobile && flutter pub get)
@@ -193,7 +194,7 @@ jobs:
 
       - name: Isolated runtimes
         run: |
-          python -m venv .venv && .venv/bin/pip install -q -e '.[dev]'
+          python -m venv .venv && .venv/bin/python -m pip install -q --upgrade 'pip>=26.2' && .venv/bin/pip install -q -e '.[dev]'
           python -m venv karmi/.venv && karmi/.venv/bin/pip install -q -c karmi/requirements.lock -e './karmi[dev]'
           npm install -g "pyright@${PYRIGHT_VERSION}"
           (cd karmi/mobile && flutter pub get)
