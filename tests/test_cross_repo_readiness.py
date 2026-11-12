@@ -226,9 +226,10 @@ def test_offline_synthetic_flow_karmi_messages_to_parakh_importer_and_evaluation
     ):
         assert sensitive_fragment not in serialized, f"Privacy violation: {sensitive_fragment} leaked"
 
-    # Verify run fields; Karmi classifies "remember" requests as memory, not drafting.
+    # Verify run fields. Karmi removed notes and memory intents (Karmi ceda6c3), so every
+    # message, including "Remember ...", now maps to the default "communication" domain.
     assert sorted(run["task_domain"] for run in batch["runs"]) == [
-        "communication", "communication", "conversation_memory"]
+        "communication", "communication", "communication"]
     for run in batch["runs"]:
         assert run["tier"] == "trika"
         assert run["outcome"]["currency"] == "XTS"  # Synthetic micro-units
@@ -300,12 +301,12 @@ def test_offline_synthetic_flow_karmi_messages_to_parakh_importer_and_evaluation
         reward_config = RewardConfig()
         reward_records = [reward_for_run(run_record, reward_config) for run_record in parsed.valid]
         assert len(reward_records) == 3
-        # A "remember" query without saved notes is Karmi ASK_USER (deferred), so it must not
-        # be scored as completed; the two drafting requests are accepted.
+        # Without the notes feature (Karmi ceda6c3) a "remember" query is no longer deferred as
+        # ASK_USER; all three runs complete as ordinary chat replies.
         completion_by_domain = sorted(
             (reward.metadata["task_domain"], reward.components.task_completed) for reward in reward_records)
         assert completion_by_domain == [
-            ("communication", 1.0), ("communication", 1.0), ("conversation_memory", 0.0)]
+            ("communication", 1.0), ("communication", 1.0), ("communication", 1.0)]
         for reward in reward_records:
             assert reward.subject_type == "telemetry_run"
             assert reward.excluded_reason is None
