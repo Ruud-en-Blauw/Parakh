@@ -1,16 +1,30 @@
 # OpenRouter Free Pilot Operator Execution Guide
 
-> **Reality check (added by supervisor after reading `model_lab/pilot.py`; not yet executed live):**
-> * `pilot run` / `run_authorized_immutable_pilot` currently accepts only a frozen plan whose cases are exactly
->   `DEVELOPMENT_CASE_COUNT` train-split cases, concurrency 1. The 49-case student set (train + calibration,
->   3 repeats, later holdout for the shortlist) therefore needs a reviewed change to those gates before it can go
->   through the normal path. Not made here: it weakens a safety gate and needs owner review.
-> * `pilot.py::_provider_for` uses the pre-existing `providers/live.py::OpenRouterProvider`, which reads
->   `OPENROUTER_API_KEY` from the process environment. The newer `providers/openrouter.py::OpenRouterAdapter`
->   (key from `.env.openrouter`, hard request cap, zero-price abort, 429 backoff) is not yet wired into `pilot run`.
->   Wire it (or export the key from `.env.openrouter` into the environment) as part of that reviewed change.
-> * Some commands below (e.g. `pilot plan` flags, `grade` arguments) were written without being run; confirm each
->   against `model-lab <cmd> --help` before use.
+> **Reality check (updated; still not run live):**
+> * **Wired and tested offline** (`tests/test_student_pilot.py`, fake provider and fake transport only):
+>   * `suite_kind`: `core` (default, the strict 36-train-case gate, unchanged) or `student`. The student path
+>     requires an explicit `suite_kind: student` (or `--suite-kind student`). It selects train and/or
+>     calibration cases, never holdout, and needs 2 to 5 candidates. Use `--suite benchmarks_student/cases.jsonl`.
+>   * OpenRouter candidates use `providers/openrouter.py::OpenRouterAdapter`. Only `:free` models are
+>     accepted. The key comes from `OPENROUTER_API_KEY`, then `.env.openrouter`, and is never printed or stored.
+>     `--catalog <snapshot-or-/models.json>` runs a zero-price check before any dispatch. The adapter also
+>     aborts on any non-zero returned cost.
+>   * `pilot run --max-requests-per-day N` refuses to start when pending requests exceed N, and shows the math.
+>     A cap reached mid-run stops cleanly and marks the run `incomplete`.
+>   * Resume: a `completed` run is reused with no provider call. Other runs dispatch only cases with no
+>     attempt yet. A stored run from a different plan hash is refused.
+> * **Still true caveats:**
+>   * Nothing here has been run live. No network call was made while building this. The owner's live run is
+>     not verified until it is executed and read back.
+>   * The start guard blocks any invocation whose pending work exceeds the cap. A multi-day schedule (the 12-day
+>     and 4-day math in `karmi-free-models-plan.md`) is therefore not executable yet. Choosing between day-sliced
+>     plans and a relaxed guard is an owner decision (`karmi-free-models-plan.md` §6).
+>   * Retries count against the cap. A case is held back when its full retry budget would not fit under the cap.
+>   * Crash safety is partial. A crash between reserving a case and recording its attempt leaves a reservation
+>     that the resume will hit as a duplicate. This is not exercised by a test and needs manual handling.
+>   * Judges and red-team are disabled. Concurrency is 1.
+>   * Some commands below (e.g. `grade` arguments) were written without being run. Confirm each against
+>     `model-lab <cmd> --help` before use.
 
 
 ## Status and Safety Boundary

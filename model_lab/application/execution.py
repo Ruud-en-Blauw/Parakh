@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -33,7 +34,7 @@ def _id(prefix: str, *parts: str) -> str:
 class ExecutionEngine:
     def __init__(self, store: SQLiteStore, provider: Provider, *, max_retries: int = 0,
                  retry_delay_seconds: float = 0.0, estimated_cost_minor_per_logical_request: int | None = None,
-                 provider_timeout_seconds: float | None = None) -> None:
+                 provider_timeout_seconds: float | None = None, cap_checker: Callable[[], bool] | None = None) -> None:
         if max_retries < 0:
             raise ValidationError("max_retries must be non-negative")
         if estimated_cost_minor_per_logical_request is not None and estimated_cost_minor_per_logical_request < 0:
@@ -44,7 +45,16 @@ class ExecutionEngine:
         self.max_retries, self.retry_delay_seconds = max_retries, retry_delay_seconds
         self.estimated_cost_minor_per_logical_request = estimated_cost_minor_per_logical_request
         self.provider_timeout_seconds = provider_timeout_seconds
+        self.cap_checker = cap_checker
         self.budgets = BudgetLedger(store)
+
+    def _is_cap_reached(self) -> bool:
+        if self.cap_checker is not None and self.cap_checker():
+            return True
+        # Capped adapters (providers/openrouter.py) expose max_requests/request_count; the
+        # Provider protocol does not, so read them defensively.
+        max_requests = getattr(self.provider, "max_requests", None)
+        return isinstance(max_requests, int) and getattr(self.provider, "request_count", 0) >= max_requests
 
     def execute(self, suite: Suite, run: Run, *, case_ids: Iterable[str] | None = None, splits: Iterable[str] | None = None, domains: Iterable[str] | None = None, workflows: Iterable[str] | None = None, complexity_levels: Iterable[int] | None = None, cancel_event: threading.Event | None = None) -> ExecutionResult:
         selected = select_cases(suite, case_ids=case_ids or run.case_ids, splits=splits, domains=domains, workflows=workflows, complexity_levels=complexity_levels)
@@ -71,6 +81,10 @@ class ExecutionEngine:
             if run.budget.max_runtime_seconds is not None and time.monotonic() - run_started >= run.budget.max_runtime_seconds:
                 self.store.update_run_status(run.run_id, "partial")
                 record_event(self.store, "runtime_limit_reached", f"max_runtime_seconds reached before {progress}", status="partial", **ctx)
+                break
+            if self._is_cap_reached():
+                self.store.update_run_status(run.run_id, "incomplete")
+                record_event(self.store, "cap_reached", f"request cap reached before {progress}", status="incomplete", **ctx)
                 break
             logical = _id("req", run.run_id, case.case_id)
             record_event(self.store, "case_started", f"{progress} started", case_id=case.case_id, **ctx)
@@ -141,6 +155,13 @@ class ExecutionEngine:
                 else None
             )
             self.budgets.settle(reservation, actual_cost_minor=actual_cost)
+            last_attempt = logical_attempts[-1] if logical_attempts else None
+            if last_attempt and last_attempt.status is AttemptStatus.PROVIDER_FAILURE and last_attempt.error:
+                err_text = last_attempt.error
+                if any(m in err_text for m in ("hard request cap", "ABORTED", "non-zero price")):
+                    self.store.update_run_status(run.run_id, "incomplete")
+                    record_event(self.store, "run_stopped", f"run stopped cleanly on cap/abort: {err_text}", status="incomplete", **ctx)
+                    break
         current = self.store.get_run(run.run_id)
         if current.status == "running":
             self.store.update_run_status(run.run_id, "partial" if failures else "completed")

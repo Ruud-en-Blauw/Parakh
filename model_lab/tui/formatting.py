@@ -14,7 +14,7 @@ NOT_MEASURED = "not measured"
 
 STATUS_STYLE = {
     "completed": "green", "passed": "green", "success": "green", "ok": "green", "valid": "green",
-    "running": "yellow", "created": "yellow", "partial": "yellow", "needs review": "yellow", "draft": "cyan",
+    "running": "yellow", "created": "yellow", "partial": "yellow", "incomplete": "yellow", "needs review": "yellow", "draft": "cyan",
     "failed": "red", "cancelled": "red", "provider_failure": "red", "timeout": "red", "infrastructure_failure": "red",
 }
 PROVENANCE_STYLE = {"SIMULATED": "magenta", "IMPORTED": "cyan", "MEASURED": "green", "PROPOSED": "cyan", "UNKNOWN": "red"}
