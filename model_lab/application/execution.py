@@ -51,10 +51,10 @@ class ExecutionEngine:
     def _is_cap_reached(self) -> bool:
         if self.cap_checker is not None and self.cap_checker():
             return True
-        if hasattr(self.provider, "max_requests") and self.provider.max_requests is not None:
-            if getattr(self.provider, "request_count", 0) >= self.provider.max_requests:
-                return True
-        return False
+        # Capped adapters (providers/openrouter.py) expose max_requests/request_count; the
+        # Provider protocol does not, so read them defensively.
+        max_requests = getattr(self.provider, "max_requests", None)
+        return isinstance(max_requests, int) and getattr(self.provider, "request_count", 0) >= max_requests
 
     def execute(self, suite: Suite, run: Run, *, case_ids: Iterable[str] | None = None, splits: Iterable[str] | None = None, domains: Iterable[str] | None = None, workflows: Iterable[str] | None = None, complexity_levels: Iterable[int] | None = None, cancel_event: threading.Event | None = None) -> ExecutionResult:
         selected = select_cases(suite, case_ids=case_ids or run.case_ids, splits=splits, domains=domains, workflows=workflows, complexity_levels=complexity_levels)
