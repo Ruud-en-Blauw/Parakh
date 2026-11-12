@@ -78,7 +78,8 @@ def test_live_run_progress_completion_and_event_log(tmp_path):
             assert 1 <= active.completed < active.total == 12
             assert "Active execution" in (app.query_one("#dash-active").border_title or "")
             assert "running" in _text(app.query_one("#statusbar"))
-            await _until(pilot, lambda: "fake run" not in app.busy and app.state is not None and not app.state.snapshot.active and bool(app.state.snapshot.runs) and app.state.snapshot.runs[0].status == "completed")
+            await _until(pilot, lambda: "fake run" not in app.busy and app.state is not None and not app.state.snapshot.active and bool(app.state.snapshot.runs) and app.state.snapshot.runs[0].status == "completed"
+                         and app.state.snapshot.runs[0].graded == 12)  # run_fake grades after the run completes
             assert app.state is not None
             run_summary = app.state.snapshot.runs[0]
             assert run_summary.cases_attempted == 12 and run_summary.graded == 12

@@ -26,6 +26,9 @@ REVIEWED_FIXTURES = {
      "9c026e94a2c607a2e427181318c6865ee0fa2a667ddb3e73c79612f12eb0a6e5"),
     ("Parakh", "tests/test_tui_console.py", "openai-token",
      "92cbf5c3be8f9c826361108d715e5909d3fa191e9acda39f9d0a9362cd7bfb4f"),
+    # Fake "secret-test-key-never-leak" value in the OpenRouter key-redaction test.
+    ("Parakh", "tests/test_openrouter_provider.py", "openai-token",
+     "3a0b408bb4211c55c376b9b29d00609969f268f8ea5768fd1fbf08a093164cf8"),
 }
 MAX_BYTES = 2_000_000
 
