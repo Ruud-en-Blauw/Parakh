@@ -72,6 +72,13 @@ def outage(karmi: Path, services: ds.Services) -> dict[str, object]:
         port = address.getsockname()[1]
     base = f"http://127.0.0.1:{port}"
     checks: dict[str, bool] = {}
+    # Karmi creates its schema automatically only on SQLite; a fresh Postgres needs the migrations.
+    env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "TMPDIR") if key in os.environ}
+    env.update(PYTHONPATH=str(karmi / "src"), DAILY_AGENT_ENVIRONMENT="test",
+               DAILY_AGENT_DATABASE_URL=ds.DATABASE_URL, DAILY_AGENT_LIVE_MODELS_ENABLED="false")
+    checks["schema_migrated_to_head"] = subprocess.run(
+        [str(karmi / ".venv/bin/python"), "-m", "alembic", "upgrade", "head"], cwd=karmi, env=env,
+        capture_output=True, timeout=300, check=False).returncode == 0
     with tempfile.TemporaryDirectory(prefix="karmi-outage-") as temporary:
         server = serve(karmi, Path(temporary) / "unused.db", port,
                        database_url=ds.DATABASE_URL, redis_url=ds.REDIS_URL)

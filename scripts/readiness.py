@@ -156,7 +156,10 @@ class Runner:
             self.record(gate, name, "BLOCKED", f"executable unavailable: {Path(args[0]).name}", start=start)
             return
         # No inherited provider/payment/channel secrets or live-mode flags enter test commands.
-        env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR") if key in os.environ}
+        # Toolchain locations (Android SDK, JDK) are paths, not secrets; flutter build needs them.
+        env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "LC_ALL", "TERM", "TMPDIR",
+                                                 "ANDROID_HOME", "ANDROID_SDK_ROOT", "JAVA_HOME")
+               if key in os.environ}
         env.update(DAILY_AGENT_ENVIRONMENT="test", DAILY_AGENT_LIVE_MODELS_ENABLED="false",
                    DAILY_AGENT_PAID_CHECKOUT_ENABLED="false", DAILY_AGENT_WHATSAPP_ENABLED="false")
         env.update(extra_env or {})
@@ -193,10 +196,9 @@ class Runner:
     def karmi_task(self, gate: str, task: str, *, timeout: int = 1200) -> None:
         self.native(gate, f"karmi-{task}", self.karmi, ["scripts/tasks.py", task], timeout=timeout)
 
-    def flutter(self, gate: str, name: str, args: list[str]) -> None:
-        # Goldens render reset times via toLocal(); baselines were generated in UTC (Karmi CI/container).
-        # Dart cannot override the zone in-process, so pin it here; host TZ would otherwise flip 8 goldens.
-        self.run(gate, name, args, self.karmi / "mobile", timeout=1200, extra_env={"TZ": "UTC"})
+    def flutter(self, gate: str, name: str, args: list[str], *, tz: str = "UTC") -> None:
+        # Dart cannot override the zone in-process, so pin it here; the host TZ would otherwise flip goldens.
+        self.run(gate, name, args, self.karmi / "mobile", timeout=1200, extra_env={"TZ": tz})
 
     def doctor(self) -> None:
         for repo in (ROOT, self.karmi):
@@ -237,7 +239,9 @@ class Runner:
         self.parakh_make("UNIT", "test-unit")
         self.karmi_task("UNIT", "test-unit")
         self.flutter("UNIT", "flutter-widget", ["flutter", "test", "--exclude-tags", "golden"])
-        self.flutter("UNIT", "flutter-golden", ["flutter", "test", "--tags", "golden"])
+        # Karmi's Usage screen shows reset times via toLocal(); its golden baselines are rendered in IST
+        # (Karmi .github/workflows/ci.yml runs goldens with TZ=Asia/Kolkata), so match that here.
+        self.flutter("UNIT", "flutter-golden", ["flutter", "test", "--tags", "golden"], tz="Asia/Kolkata")
 
     def component(self) -> None:
         self.native("COMPONENT", "karmi-api-auth", self.karmi,
